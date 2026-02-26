@@ -1,0 +1,21 @@
+# /etc/pacman.d/hooks/99-uki-build.hook
+# Rebuild and sign Unified Kernel Images after kernel or mkinitcpio updates
+
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/lib/modules/*/vmlinuz
+Target = boot/initramfs-*.img
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = linux*
+Target = *-ucode
+
+[Action]
+Description = Building and signing Unified Kernel Images...
+When = PostTransaction
+Exec = /etc/uki-secureboot/uki-build.sh

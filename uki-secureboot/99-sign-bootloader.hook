@@ -1,0 +1,14 @@
+# /etc/pacman.d/hooks/95-sign-bootloader.hook
+# Re-sign systemd-boot after systemd upgrades.
+# Runs at priority 95 — after systemd's own bootctl-update hook at 90.
+
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/lib/systemd/boot/efi/systemd-bootx64.efi
+
+[Action]
+Description = Signing systemd-boot EFI binaries...
+When = PostTransaction
+Exec = /etc/uki-secureboot/sign-bootloader.sh
