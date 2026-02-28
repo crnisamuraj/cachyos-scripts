@@ -24,17 +24,20 @@ MKINITCPIO_CONF="/etc/mkinitcpio.conf"
 
 log "Running pre-flight checks..."
 
-for cmd in btrfs findmnt; do
-    command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd (install btrfs-progs)"
+for cmd in btrfs findmnt mkinitcpio; do
+    command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
 done
 
-[[ -f "$CMDLINE_FILE" ]] || die "Kernel cmdline file not found: $CMDLINE_FILE — is uki-secureboot set up?"
+[[ -f "$CMDLINE_FILE" ]]     || die "Kernel cmdline file not found: $CMDLINE_FILE — is uki-secureboot set up?"
+[[ -f "$MKINITCPIO_CONF" ]]  || die "mkinitcpio config not found: $MKINITCPIO_CONF"
 
 # Verify 'resume' hook presence and ordering in mkinitcpio.conf
-HOOKS_LINE=$(grep -E '^\s*HOOKS=' "$MKINITCPIO_CONF" 2>/dev/null | tail -1 || true)
+HOOKS_LINE=$(grep -E '^\s*HOOKS=' "$MKINITCPIO_CONF" | tail -1 || true)
 [[ -n "$HOOKS_LINE" ]] || die "Could not find HOOKS= line in $MKINITCPIO_CONF"
 
 hooks_content=$(echo "$HOOKS_LINE" | sed 's/.*HOOKS=(\([^)]*\)).*/\1/')
+[[ "$hooks_content" != "$HOOKS_LINE" ]] \
+    || die "Could not parse HOOKS array from $MKINITCPIO_CONF — unexpected format: $HOOKS_LINE"
 
 if ! echo "$hooks_content" | grep -qw 'resume'; then
     die "'resume' hook not found in $MKINITCPIO_CONF HOOKS.
@@ -66,6 +69,10 @@ Then re-run this script."
 fi
 
 log "Pre-flight OK: 'resume' hook present and correctly ordered."
+
+if grep -qw 'noresume' "$CMDLINE_FILE"; then
+    warn "'noresume' found in $CMDLINE_FILE — hibernate will not restore state until it is removed!"
+fi
 
 # ─── 1. Calculate swap size ──────────────────────────────────────────────────
 
@@ -102,14 +109,19 @@ fi
 
 # ─── 3. Configure /etc/fstab ─────────────────────────────────────────────────
 
-if grep -q "$SWAP_FILE" /etc/fstab; then
+if grep -qF "$SWAP_FILE" /etc/fstab; then
     log "Swapfile already in /etc/fstab — skipping."
 else
     echo "$SWAP_FILE none swap defaults,pri=0 0 0" >> /etc/fstab
     log "Added to /etc/fstab (pri=0, below ZRAM priority of 100)"
 fi
 
-swapon "$SWAP_FILE" 2>/dev/null && log "Swapfile activated." || log "Swapfile already active."
+if swapon --show 2>/dev/null | grep -qF "$SWAP_FILE"; then
+    log "Swapfile already active."
+else
+    swapon "$SWAP_FILE"
+    log "Swapfile activated."
+fi
 
 # ─── 4. Get resume parameters ────────────────────────────────────────────────
 
@@ -141,7 +153,9 @@ else
     log "Updating $CMDLINE_FILE:"
     log "  old: $OLD_CMDLINE"
     log "  new: $NEW_CMDLINE"
-    echo "$NEW_CMDLINE" > "$CMDLINE_FILE"
+    _tmp=$(mktemp "${CMDLINE_FILE}.XXXXXX")
+    echo "$NEW_CMDLINE" > "$_tmp"
+    mv "$_tmp" "$CMDLINE_FILE"
 fi
 
 # ─── 6. Rebuild initramfs ────────────────────────────────────────────────────

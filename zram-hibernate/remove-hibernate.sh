@@ -26,7 +26,7 @@ echo ""
 
 # ─── 1. Swapoff ──────────────────────────────────────────────────────────────
 
-if swapon --show 2>/dev/null | grep -q "$SWAP_FILE"; then
+if swapon --show 2>/dev/null | grep -qF "$SWAP_FILE"; then
     log "Deactivating swapfile..."
     swapoff "$SWAP_FILE"
 else
@@ -35,7 +35,7 @@ fi
 
 # ─── 2. Remove from /etc/fstab ───────────────────────────────────────────────
 
-if grep -q "$SWAP_FILE" /etc/fstab; then
+if grep -qF "$SWAP_FILE" /etc/fstab; then
     log "Removing swapfile entry from /etc/fstab..."
     sed -i "\|$SWAP_FILE|d" /etc/fstab
 else
@@ -73,7 +73,9 @@ if [[ -f "$CMDLINE_FILE" ]]; then
         log "Removing resume params from $CMDLINE_FILE:"
         log "  old: $OLD_CMDLINE"
         log "  new: $NEW_CMDLINE"
-        echo "$NEW_CMDLINE" > "$CMDLINE_FILE"
+        _tmp=$(mktemp "${CMDLINE_FILE}.XXXXXX")
+        echo "$NEW_CMDLINE" > "$_tmp"
+        mv "$_tmp" "$CMDLINE_FILE"
 
         if [[ -x "/etc/uki-secureboot/uki-build.sh" ]]; then
             log "Rebuilding and re-signing UKIs..."
