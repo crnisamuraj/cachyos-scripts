@@ -1,0 +1,18 @@
+# /etc/pacman.d/hooks/01-snapshot-uki-pre.hook
+# Build signed rollback UKI for the pre-upgrade snapshot
+# Runs after snap-pac's 00-snapper-pre.hook creates the snapshot
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = *
+
+[Action]
+Description = Building signed rollback UKI for pre-upgrade snapshot...
+When = PreTransaction
+Depends = snapper
+Depends = ukify
+Depends = sbsign
+Exec = /etc/snapper-boot/snapshot-uki.sh

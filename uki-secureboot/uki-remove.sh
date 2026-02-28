@@ -44,6 +44,9 @@ for uki in "${UKI_DIR}"/*.efi; do
     [[ -f "${uki}" ]] || continue
     filename="$(basename "${uki}" .efi)"
 
+    # Skip snapshot rollback UKIs (managed by snapper-boot)
+    [[ "${filename}" == snapshot-* ]] && continue
+
     # Match against the exact expected filename using the same naming logic as uki-build.sh
     # (pkgbase-kver or linux-kver) — avoids false positives from substring matches
     # when one kver is a substring of another (e.g. 6.19.3-2-cachyos inside
