@@ -1,12 +1,20 @@
-# /etc/pacman.d/hooks/95-sign-bootloader.hook
+# /etc/pacman.d/hooks/99-sign-bootloader.hook
 # Re-sign systemd-boot after systemd upgrades.
-# Runs at priority 95 — after systemd's own bootctl-update hook at 90.
+# Runs at priority 99 — after systemd's own bootctl-update hook at 90.
 
 [Trigger]
 Type = Path
 Operation = Install
 Operation = Upgrade
 Target = usr/lib/systemd/boot/efi/*.efi
+Target = usr/lib/systemd/boot/efi/*
+Target = usr/lib/systemd/boot/*
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = systemd
 
 [Action]
 Description = Signing systemd-boot EFI binaries...
