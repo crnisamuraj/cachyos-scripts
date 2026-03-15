@@ -66,7 +66,7 @@ mkdir -p /etc/pacman.d/hooks
 
 cp "${SCRIPT_DIR}/99-uki-build.hook"       /etc/pacman.d/hooks/
 cp "${SCRIPT_DIR}/99-uki-remove.hook"      /etc/pacman.d/hooks/
-cp "${SCRIPT_DIR}/99-sign-bootloader.hook" /etc/pacman.d/hooks/
+cp "${SCRIPT_DIR}/zz-sign-bootloader.hook" /etc/pacman.d/hooks/
 
 # ─── Disable mkinitcpio's default UKI/copying hooks if present ──────────────
 # CachyOS may ship hooks that copy vmlinuz/initramfs to ESP — we handle that now
