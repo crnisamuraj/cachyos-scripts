@@ -1,6 +1,6 @@
 # /etc/pacman.d/hooks/99-sign-bootloader.hook
 # Re-sign systemd-boot after systemd upgrades.
-# Runs at priority 99 — after systemd's own bootctl-update hook at 90.
+# Runs at priority 99 — after systemd's own bootctl-update hook at 90 and upgrade hook at 98.
 
 [Trigger]
 Type = Path
