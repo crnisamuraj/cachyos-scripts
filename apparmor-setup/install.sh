@@ -12,12 +12,14 @@ error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 [[ $EUID -ne 0 ]] && { echo "Must run as root"; exit 1; }
 
-DEST="/etc/apparmor-setup"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_NAME="$(basename "$(cd "${SCRIPT_DIR}/.." && pwd)")"
+MODULE_NAME="$(basename "${SCRIPT_DIR}")"
+DEST="/etc/${REPO_NAME}/${MODULE_NAME}"
 
 mkdir -p "$DEST"
 
-for script in setup-apparmor.sh remove-apparmor.sh enforce-all.sh; do
+for script in setup.sh remove.sh enforce-all.sh; do
     src="$SCRIPT_DIR/$script"
     dst="$DEST/$script"
 
@@ -37,7 +39,7 @@ done
 
 echo ""
 info "Run the following to configure AppArmor:"
-echo "  sudo $DEST/setup-apparmor.sh"
+echo "  sudo $DEST/setup.sh"
 echo ""
 echo "Options:"
 echo "  --complain    Stage profiles in complain mode (logs only); enforce later with:"

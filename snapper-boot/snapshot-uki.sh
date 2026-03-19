@@ -14,10 +14,18 @@ die()  { echo "[snapshot-uki] ERROR: $*" >&2; exit 1; }
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-CONFIG_FILE="/etc/snapper-boot/config"
+# Config file path: installed to /etc/arch-scripts/snapper-boot/config by install.sh
+# Fall back to legacy path for compatibility
+if [[ -f "/etc/arch-scripts/snapper-boot/config" ]]; then
+    CONFIG_FILE="/etc/arch-scripts/snapper-boot/config"
+elif [[ -f "/etc/snapper-boot/config" ]]; then
+    CONFIG_FILE="/etc/snapper-boot/config"
+else
+    CONFIG_FILE=""
+fi
 MAX_SNAPSHOTS=3
 
-if [[ -f "${CONFIG_FILE}" ]]; then
+if [[ -n "${CONFIG_FILE}" && -f "${CONFIG_FILE}" ]]; then
     # shellcheck source=/dev/null
     source "${CONFIG_FILE}"
 fi
@@ -35,8 +43,7 @@ fi
 UKI_DIR="${ESP}/EFI/Linux"
 
 MODULES_DIR="/usr/lib/modules"
-CMDLINE="/etc/uki-secureboot/cmdline"
-KEY_DIR="/etc/uki-secureboot/keys"
+CMDLINE="/etc/kernel/cmdline"
 OSRELEASE="/etc/os-release"
 UCODE=""
 
@@ -126,7 +133,11 @@ cleanup_old_snapshots() {
         keep_count=$((keep_count + 1))
         if [[ ${keep_count} -gt ${MAX_SNAPSHOTS} ]]; then
             log "Pruning rollback UKIs for snapshot #${num}..."
-            rm -f "${UKI_DIR}"/snapshot-"${num}"-*.efi
+            for old_uki in "${UKI_DIR}"/snapshot-"${num}"-*.efi; do
+                [[ -f "${old_uki}" ]] || continue
+                sbctl remove-file "${old_uki}" 2>/dev/null || true
+                rm -f "${old_uki}"
+            done
         fi
     done <<< "${sorted}"
 }
@@ -146,14 +157,12 @@ fi
 [[ $EUID -eq 0 ]] || die "Must run as root."
 
 command -v ukify   >/dev/null 2>&1 || die "ukify not found. Install systemd-ukify."
-command -v sbsign  >/dev/null 2>&1 || die "sbsign not found. Install sbsigntools."
+command -v sbctl   >/dev/null 2>&1 || die "sbctl not found. Install sbctl."
 command -v snapper >/dev/null 2>&1 || die "snapper not found. Install snapper."
 command -v btrfs   >/dev/null 2>&1 || die "btrfs not found. Install btrfs-progs."
 
-[[ -f "${KEY_DIR}/MOK.key" ]] || die "MOK key not found at ${KEY_DIR}/MOK.key."
-[[ -f "${KEY_DIR}/MOK.pem" ]] || die "MOK certificate not found at ${KEY_DIR}/MOK.pem."
-[[ -f "${CMDLINE}" ]]         || die "Kernel cmdline not found at ${CMDLINE}."
-[[ -f "${OSRELEASE}" ]]       || die "os-release not found at ${OSRELEASE}."
+[[ -f "${CMDLINE}" ]]   || die "Kernel cmdline not found at ${CMDLINE}."
+[[ -f "${OSRELEASE}" ]] || die "os-release not found at ${OSRELEASE}."
 
 # Verify snapper root config exists
 if ! snapper list-configs 2>/dev/null | grep -q 'root'; then
@@ -208,7 +217,6 @@ SNAP_CMDLINE="$(echo "${ORIG_CMDLINE}" \
     | sed 's/rootflags=[^ ]*//g' \
     | sed 's/resume=[^ ]*//g' \
     | sed 's/resume_offset=[^ ]*//g' \
-    | sed 's/ rw / ro /g; s/^rw /ro /; s/ rw$/ ro/' \
     | sed 's/  */ /g' \
     | sed 's/^ //;s/ $//')"
 
@@ -218,7 +226,7 @@ log "Snapshot cmdline: ${SNAP_CMDLINE}"
 
 # ─── Temp files ──────────────────────────────────────────────────────────────
 
-TMPDIR_WORK="$(mktemp -d /tmp/snapshot-uki-XXXXXX)"
+TMPDIR_WORK="$(mktemp -d)"
 trap 'rm -rf "${TMPDIR_WORK}"' EXIT
 
 # Write temp cmdline
@@ -321,25 +329,12 @@ for kdir in "${MODULES_DIR}"/*/; do
         continue
     fi
 
-    # Sign with MOK
-    log "Signing rollback UKI with MOK..."
-    if ! sbsign \
-        --key "${KEY_DIR}/MOK.key" \
-        --cert "${KEY_DIR}/MOK.pem" \
-        --output "${uki_path}" \
-        "${uki_tmp}"; then
-        warn "sbsign failed for ${kver}"
-        rm -f "${uki_tmp}"
-        continue
-    fi
-
-    rm -f "${uki_tmp}"
-
-    # Verify signature
-    if sbverify --cert "${KEY_DIR}/MOK.pem" "${uki_path}" >/dev/null 2>&1; then
-        log "Signature verified: ${uki_path}"
-    else
-        warn "Signature verification FAILED for ${uki_path} — removing"
+    # Move to final location and sign with sbctl
+    mv "${uki_tmp}" "${uki_path}"
+    log "Signing rollback UKI with sbctl..."
+    if ! sbctl sign -s "${uki_path}"; then
+        warn "sbctl sign failed for ${kver} — removing"
+        sbctl remove-file "${uki_path}" 2>/dev/null || true
         rm -f "${uki_path}"
         continue
     fi

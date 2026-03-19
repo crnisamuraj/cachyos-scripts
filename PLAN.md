@@ -73,12 +73,12 @@ Each module folder may contain any combination of:
 | `reconfigure.sh` | Re-configure without full reinstall |
 
 ### Tasks
-- [ ] Write root `install.sh` orchestrator
-- [ ] Write root `remove.sh` orchestrator
-- [ ] Write root `setup.sh` orchestrator
-- [ ] Write root `reconfigure.sh` orchestrator
-- [ ] Standardise module script names: `install.sh`, `remove.sh` (rename existing `remove-*.sh`)
-- [ ] Rename `snapper-boot/remove.sh` → confirm naming matches convention
+- [x] Write root `install.sh` orchestrator
+- [x] Write root `remove.sh` orchestrator
+- [x] Write root `setup.sh` orchestrator
+- [x] Write root `reconfigure.sh` orchestrator
+- [x] Standardise module script names: `install.sh`, `remove.sh` (rename existing `remove-*.sh`)
+- [x] Rename `snapper-boot/remove.sh` → confirm naming matches convention
 
 ---
 
@@ -108,9 +108,9 @@ Renaming the repo folder automatically updates install paths — required for AU
 - Kernel cmdline: `/etc/kernel/cmdline` (systemd standard location)
 
 ### Tasks
-- [ ] Update `uki-secureboot/install.sh` — dynamic `INSTALL_DIR`
-- [ ] Update `snapper-boot/install.sh` — dynamic `INSTALL_DIR`
-- [ ] Update all hardcoded `/etc/uki-secureboot/` and `/etc/snapper-boot/` references in scripts
+- [x] Update `uki-secureboot/install.sh` — dynamic `INSTALL_DIR`
+- [x] Update `snapper-boot/install.sh` — dynamic `INSTALL_DIR`
+- [x] Update all hardcoded `/etc/uki-secureboot/` and `/etc/snapper-boot/` references in scripts
 - [ ] Add migration notice in install scripts: detect old path, warn user to remove manually
 
 ---
@@ -172,11 +172,11 @@ Before making any changes, verify required system hooks exist:
 - `/usr/share/libalpm/hooks/zz-sbctl.hook` (sbctl auto-signing)
 
 ### Tasks
-- [ ] Update mkinitcpio presets (keep `default_image=` active alongside `default_uki=`)
-- [ ] Create `/etc/kernel/uki.conf`
-- [ ] Migrate cmdline to `/etc/kernel/cmdline`
-- [ ] Remove `uki-build.sh`, `99-uki-build.hook`, `99-uki-remove.hook`
-- [ ] Rewrite `install.sh` — preset editing, uki.conf, cmdline, sbctl registration, service masking, hook existence checks
+- [x] Update mkinitcpio presets (keep `default_image=` active alongside `default_uki=`)
+- [x] Create `/etc/kernel/uki.conf`
+- [x] Migrate cmdline to `/etc/kernel/cmdline`
+- [x] Remove `uki-build.sh`, `99-uki-build.hook`, `99-uki-remove.hook`
+- [x] Rewrite `install.sh` — preset editing, uki.conf, cmdline, sbctl registration, service masking, hook existence checks
 - [ ] Update `README.md`
 
 ---
@@ -238,11 +238,11 @@ Before making any changes verify:
 - `/etc/kernel/cmdline` exists
 
 ### Tasks
-- [ ] Rename `01-snapshot-uki-pre.hook` → `06-snapshot-uki-pre.hook`
-- [ ] Replace sbsign/sbverify with `sbctl sign -s` in `snapshot-uki.sh`
-- [ ] Add `sbctl remove-file` to cleanup function
-- [ ] Update cmdline path → `/etc/kernel/cmdline`
-- [ ] Rewrite `install.sh` — new path, remove MOK checks, add sbctl/cmdline checks
+- [x] Rename `01-snapshot-uki-pre.hook` → `06-snapshot-uki-pre.hook`
+- [x] Replace sbsign/sbverify with `sbctl sign -s` in `snapshot-uki.sh`
+- [x] Add `sbctl remove-file` to cleanup function
+- [x] Update cmdline path → `/etc/kernel/cmdline`
+- [x] Rewrite `install.sh` — new path, remove MOK checks, add sbctl/cmdline checks
 - [ ] Test: verify snapshot UKI appears in systemd-boot menu after pacman transaction
 - [ ] Test: boot snapshot, verify correct kernel version boots correct rootfs
 

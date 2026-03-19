@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# setup-hibernate.sh — Configure hibernate-to-swapfile on BTRFS with ZRAM coexistence
-# Usage: sudo /etc/zram-hibernate/setup-hibernate.sh
+# setup.sh — Configure hibernate-to-swapfile on BTRFS with ZRAM coexistence
+# Usage: sudo /etc/arch-scripts/zram-hibernate/setup.sh
 
 set -euo pipefail
 
@@ -15,7 +15,7 @@ die()  { echo -e "${RED}[setup] ERROR:${NC} $*" >&2; exit 1; }
 
 SWAP_PATH="/var/swap"
 SWAP_FILE="$SWAP_PATH/swapfile"
-CMDLINE_FILE="/etc/uki-secureboot/cmdline"
+CMDLINE_FILE="/etc/kernel/cmdline"
 MKINITCPIO_CONF="/etc/mkinitcpio.conf"
 
 # ─── Pre-flight checks ───────────────────────────────────────────────────────
@@ -161,18 +161,12 @@ else
     mv "$_tmp" "$CMDLINE_FILE"
 fi
 
-# ─── 6. Rebuild initramfs ────────────────────────────────────────────────────
+# ─── 6. Rebuild initramfs and UKIs ───────────────────────────────────────────
+# mkinitcpio rebuilds both initramfs and UKI (if default_uki= is set in preset).
+# zz-sbctl.hook will re-sign the UKI on the next pacman transaction.
 
-log "Rebuilding initramfs (mkinitcpio -P)..."
-mkinitcpio -P
-
-# ─── 7. Rebuild and re-sign UKIs ─────────────────────────────────────────────
-# Must run AFTER mkinitcpio so the UKI embeds the new initramfs + updated cmdline.
-# The pacman hook (99-uki-build.hook) only fires on package updates, not here.
-
-log "Rebuilding and signing UKIs..."
-[[ -x "/etc/uki-secureboot/uki-build.sh" ]] || die "uki-build.sh not found — is uki-secureboot deployed to /etc/uki-secureboot/?"
-/etc/uki-secureboot/uki-build.sh
+log "Rebuilding initramfs and UKIs (mkinitcpio -P)..."
+mkinitcpio -P || die "mkinitcpio rebuild failed."
 
 # ─── 8. AppArmor local override ──────────────────────────────────────────────
 # /etc/apparmor.d/systemd-sleep already contains:
@@ -201,9 +195,11 @@ ${SWAP_FILE} rw,
 EOF
 
 if [[ -f "$APPARMOR_PROFILE" ]]; then
-    apparmor_parser -r "$APPARMOR_PROFILE" 2>/dev/null \
-        && log "AppArmor profile reloaded." \
-        || warn "AppArmor reload returned non-zero — profile may not be active yet (OK on first boot)."
+    if apparmor_parser -r "$APPARMOR_PROFILE" 2>/dev/null; then
+        log "AppArmor profile reloaded."
+    else
+        warn "AppArmor reload returned non-zero — profile may not be active yet (OK on first boot)."
+    fi
 else
     warn "AppArmor profile not found at $APPARMOR_PROFILE — local override written but not loaded."
 fi

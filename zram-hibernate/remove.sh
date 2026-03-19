@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# remove-hibernate.sh — Undo everything setup-hibernate.sh configured
-# Usage: sudo /etc/zram-hibernate/remove-hibernate.sh
+# remove.sh — Undo everything setup.sh configured
+# Usage: sudo /etc/arch-scripts/zram-hibernate/remove.sh
 
 set -euo pipefail
 
@@ -15,7 +15,7 @@ die()  { echo -e "${RED}[remove] ERROR:${NC} $*" >&2; exit 1; }
 
 SWAP_PATH="/var/swap"
 SWAP_FILE="$SWAP_PATH/swapfile"
-CMDLINE_FILE="/etc/uki-secureboot/cmdline"
+CMDLINE_FILE="/etc/kernel/cmdline"
 APPARMOR_LOCAL="/etc/apparmor.d/local/systemd-sleep"
 APPARMOR_PROFILE="/etc/apparmor.d/systemd-sleep"
 
@@ -112,18 +112,9 @@ fi
 
 # ─── 6. Rebuild initramfs and UKIs if anything changed ───────────────────────
 
-if [[ "$NEED_INITRAMFS" == true ]]; then
-    log "Rebuilding initramfs (mkinitcpio -P)..."
-    mkinitcpio -P
-fi
-
-if [[ "$NEED_UKI" == true ]]; then
-    if [[ -x "/etc/uki-secureboot/uki-build.sh" ]]; then
-        log "Rebuilding and re-signing UKIs..."
-        /etc/uki-secureboot/uki-build.sh
-    else
-        warn "uki-build.sh not found — UKIs not rebuilt. Run manually when available."
-    fi
+if [[ "$NEED_INITRAMFS" == true || "$NEED_UKI" == true ]]; then
+    log "Rebuilding initramfs and UKIs via mkinitcpio..."
+    mkinitcpio -P || warn "mkinitcpio rebuild failed — rebuild manually."
 fi
 
 # ─── 7. Remove AppArmor local override ───────────────────────────────────────
@@ -132,9 +123,11 @@ if [[ -f "$APPARMOR_LOCAL" ]]; then
     log "Removing AppArmor local override: $APPARMOR_LOCAL"
     rm -f "$APPARMOR_LOCAL"
     if [[ -f "$APPARMOR_PROFILE" ]]; then
-        apparmor_parser -r "$APPARMOR_PROFILE" 2>/dev/null \
-            && log "AppArmor profile reloaded." \
-            || warn "AppArmor reload returned non-zero — may need a reboot."
+        if apparmor_parser -r "$APPARMOR_PROFILE" 2>/dev/null; then
+            log "AppArmor profile reloaded."
+        else
+            warn "AppArmor reload returned non-zero — may need a reboot."
+        fi
     fi
 else
     log "AppArmor local override not found — skipping."

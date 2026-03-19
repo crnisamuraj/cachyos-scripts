@@ -1,10 +1,23 @@
 #!/usr/bin/env bash
-# install.sh — Deploy UKI + Secure Boot setup to the system
+# install.sh — Configure UKI Secure Boot with mkinitcpio-native UKI generation
 # Usage: sudo ./install.sh
+#
+# What this does:
+#   1. Installs dependencies (systemd-ukify, sbctl)
+#   2. Verifies required system hooks exist
+#   3. Migrates/creates kernel cmdline at /etc/kernel/cmdline
+#   4. Creates /etc/kernel/uki.conf
+#   5. Enables UKI generation in mkinitcpio presets (keeps initramfs active)
+#   6. Masks systemd-boot-update.service
+#   7. Rebuilds initramfs+UKI via mkinitcpio
+#   8. Registers UKI paths with sbctl for automatic re-signing
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_NAME="$(basename "$(cd "${SCRIPT_DIR}/.." && pwd)")"
+MODULE_NAME="$(basename "${SCRIPT_DIR}")"
+INSTALL_DIR="/etc/${REPO_NAME}/${MODULE_NAME}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -32,12 +45,10 @@ if [[ ${#missing[@]} -gt 0 ]]; then
 fi
 
 # ─── Verify required system hooks are present ───────────────────────────────
-# We rely on these distro-provided hooks to update and sign the bootloader.
-# Without them the signing chain breaks — abort before modifying anything.
 log "Checking required system hooks..."
 required_hooks=(
-    /usr/share/libalpm/hooks/sdboot-systemd-update.hook  # runs bootctl update on systemd upgrade
-    /usr/share/libalpm/hooks/zz-sbctl.hook               # re-signs EFI after updates
+    /usr/share/libalpm/hooks/sdboot-systemd-update.hook
+    /usr/share/libalpm/hooks/zz-sbctl.hook
 )
 missing_hooks=()
 for hook in "${required_hooks[@]}"; do
@@ -51,55 +62,48 @@ $(printf '  %s\n' "${missing_hooks[@]}")
 fi
 log "Required hooks present."
 
-# ─── Deploy scripts ─────────────────────────────────────────────────────────
-log "Deploying scripts to /etc/uki-secureboot/..."
-mkdir -p /etc/uki-secureboot
-
-cp "${SCRIPT_DIR}/uki-build.sh"  /etc/uki-secureboot/
-cp "${SCRIPT_DIR}/uki-remove.sh" /etc/uki-secureboot/
-
-chmod 700 /etc/uki-secureboot/*.sh
-
 # ─── Kernel command line ─────────────────────────────────────────────────────
-if [[ ! -f /etc/uki-secureboot/cmdline ]]; then
-    # Strip bootloader-specific tokens that must not be embedded in a UKI:
-    #   BOOT_IMAGE=  — set by the bootloader, meaningless inside UKI
-    #   initrd=      — the initramfs is embedded; an extra initrd= causes conflicts
-    raw_cmdline="$(cat /proc/cmdline)"
-    clean_cmdline="$(echo "${raw_cmdline}" \
-        | sed 's/BOOT_IMAGE=[^ ]*[[:space:]]*//g' \
-        | sed 's/initrd=[^ ]*[[:space:]]*//g' \
-        | sed 's/[[:space:]]*$//')"
-    log "Writing cmdline: ${clean_cmdline}"
-    echo "${clean_cmdline}" > /etc/uki-secureboot/cmdline
-    warn "Review /etc/uki-secureboot/cmdline and adjust if needed!"
+# Check for cmdline in old install locations
+OLD_CMDLINE=""
+for old_path in "${INSTALL_DIR}/cmdline" "/etc/uki-secureboot/cmdline"; do
+    if [[ -f "${old_path}" ]]; then
+        OLD_CMDLINE="${old_path}"
+        break
+    fi
+done
+
+if [[ ! -f /etc/kernel/cmdline ]]; then
+    mkdir -p /etc/kernel
+    if [[ -n "${OLD_CMDLINE}" ]]; then
+        log "Migrating cmdline from ${OLD_CMDLINE} → /etc/kernel/cmdline"
+        cp "${OLD_CMDLINE}" /etc/kernel/cmdline
+    else
+        raw_cmdline="$(cat /proc/cmdline)"
+        clean_cmdline="$(echo "${raw_cmdline}" \
+            | sed 's/BOOT_IMAGE=[^ ]*[[:space:]]*//g' \
+            | sed 's/initrd=[^ ]*[[:space:]]*//g' \
+            | sed 's/[[:space:]]*$//')"
+        log "Writing cmdline: ${clean_cmdline}"
+        echo "${clean_cmdline}" > /etc/kernel/cmdline
+    fi
+    warn "Review /etc/kernel/cmdline and adjust if needed!"
 else
-    log "Kernel cmdline already exists, not overwriting."
+    log "Kernel cmdline already exists at /etc/kernel/cmdline."
 fi
 
-# ─── Deploy pacman hooks ────────────────────────────────────────────────────
-log "Installing pacman hooks..."
-mkdir -p /etc/pacman.d/hooks
-
-cp "${SCRIPT_DIR}/99-uki-build.hook"  /etc/pacman.d/hooks/
-cp "${SCRIPT_DIR}/99-uki-remove.hook" /etc/pacman.d/hooks/
-
-# ─── Mask systemd-boot-update.service ───────────────────────────────────────
-# The service runs bootctl update at boot with no signing step after it.
-# Bootloader updates are handled by sdboot-systemd-update.hook + zz-sbctl.hook
-# during pacman transactions, which sign after updating.
-log "Masking systemd-boot-update.service..."
-systemctl mask systemd-boot-update.service
-
-# ─── Disable mkinitcpio's default UKI/copying hooks if present ──────────────
-# CachyOS may ship hooks that copy vmlinuz/initramfs to ESP — we handle that now
-if [[ -f /etc/pacman.d/hooks/90-mkinitcpio-install.hook ]]; then
-    warn "Found existing mkinitcpio install hook — you may want to review"
-    warn "  /etc/pacman.d/hooks/90-mkinitcpio-install.hook"
-    warn "to avoid duplicate ESP entries."
+# ─── UKI configuration ──────────────────────────────────────────────────────
+if [[ ! -f /etc/kernel/uki.conf ]]; then
+    log "Creating /etc/kernel/uki.conf"
+    cat > /etc/kernel/uki.conf << 'EOF'
+[UKI]
+Cmdline=@/etc/kernel/cmdline
+OSRelease=@/etc/os-release
+EOF
+else
+    log "/etc/kernel/uki.conf already exists."
 fi
 
-# ─── Detect ESP and create UKI output dir ───────────────────────────────────
+# ─── Detect ESP ──────────────────────────────────────────────────────────────
 esp_mount=""
 for candidate in /efi /boot/efi /boot; do
     if mountpoint -q "${candidate}" 2>/dev/null; then
@@ -109,32 +113,93 @@ for candidate in /efi /boot/efi /boot; do
 done
 
 if [[ -z "${esp_mount}" ]]; then
-    warn "Could not auto-detect ESP mount point — scripts will detect it at runtime."
-else
-    log "Detected ESP at: ${esp_mount}"
-    mkdir -p "${esp_mount}/EFI/Linux"
+    die "Could not auto-detect ESP mount point. Mount your ESP and try again."
 fi
+log "Detected ESP at: ${esp_mount}"
+mkdir -p "${esp_mount}/EFI/Linux"
+
+# ─── Enable UKI generation in mkinitcpio presets ─────────────────────────────
+log "Configuring mkinitcpio presets for UKI generation..."
+for preset in /etc/mkinitcpio.d/*.preset; do
+    [[ -f "${preset}" ]] || continue
+    preset_name="$(basename "${preset}" .preset)"
+
+    # Check if default_uki is already uncommented/active
+    if grep -qE '^\s*default_uki=' "${preset}"; then
+        log "  ${preset_name}: default_uki already active."
+        continue
+    fi
+
+    # Uncomment default_uki if it exists as a comment
+    if grep -qE '^\s*#\s*default_uki=' "${preset}"; then
+        sed -i 's/^\s*#\s*\(default_uki=.*\)/\1/' "${preset}"
+        log "  ${preset_name}: enabled default_uki."
+    else
+        # Add default_uki line — derive path from preset name
+        echo "default_uki=\"${esp_mount}/EFI/Linux/arch-${preset_name}.efi\"" >> "${preset}"
+        log "  ${preset_name}: added default_uki."
+    fi
+
+    # Ensure default_image is still active (snapper-boot needs initramfs)
+    if ! grep -qE '^\s*default_image=' "${preset}"; then
+        if grep -qE '^\s*#\s*default_image=' "${preset}"; then
+            sed -i 's/^\s*#\s*\(default_image=.*\)/\1/' "${preset}"
+            log "  ${preset_name}: re-enabled default_image (needed by snapper-boot)."
+        fi
+    fi
+done
+
+# ─── Mask systemd-boot-update.service ────────────────────────────────────────
+log "Masking systemd-boot-update.service..."
+systemctl mask systemd-boot-update.service 2>/dev/null || true
+
+# ─── Remove old custom hooks if present ──────────────────────────────────────
+for old_hook in /etc/pacman.d/hooks/99-uki-build.hook /etc/pacman.d/hooks/99-uki-remove.hook; do
+    if [[ -f "${old_hook}" ]]; then
+        rm -f "${old_hook}"
+        log "Removed old hook: ${old_hook}"
+    fi
+done
+
+# ─── Rebuild UKIs via mkinitcpio ─────────────────────────────────────────────
+log "Rebuilding initramfs and UKIs via mkinitcpio..."
+for preset in /etc/mkinitcpio.d/*.preset; do
+    [[ -f "${preset}" ]] || continue
+    preset_name="$(basename "${preset}" .preset)"
+    log "  Building: ${preset_name}"
+    if ! mkinitcpio -p "${preset_name}"; then
+        die "mkinitcpio failed for preset ${preset_name}. Check output above."
+    fi
+done
+
+# ─── Register UKI paths with sbctl ──────────────────────────────────────────
+log "Registering UKI paths with sbctl for automatic re-signing..."
+if [[ -n "${esp_mount}" ]]; then
+    for uki in "${esp_mount}"/EFI/Linux/*.efi; do
+        [[ -f "${uki}" ]] || continue
+        # Skip snapshot UKIs (managed by snapper-boot)
+        [[ "$(basename "${uki}")" == snapshot-* ]] && continue
+        log "  Signing and registering: ${uki}"
+        sbctl sign -s "${uki}"
+    done
+fi
+
+# ─── Deploy install dir (for future reference) ──────────────────────────────
+mkdir -p "${INSTALL_DIR}"
 
 # ─── Summary ────────────────────────────────────────────────────────────────
 echo ""
 log "Installation complete!"
 echo ""
-echo "Next steps:"
-echo "  1. Review /etc/uki-secureboot/cmdline (auto-detected from current boot)"
-echo "  2. Generate Secure Boot keys:"
-echo "       sudo sbctl create-keys"
-echo "  3. Enroll keys in firmware (enter Setup Mode in UEFI first):"
-echo "       sudo sbctl enroll-keys --microsoft"
-echo "  4. Sign systemd-boot EFI binaries and register with sbctl:"
-echo "       sudo sbctl sign -s /boot/EFI/BOOT/BOOTX64.EFI"
-echo "       sudo sbctl sign -s /boot/EFI/systemd/systemd-bootx64.efi"
-echo "  5. Build and sign initial UKIs:"
-echo "       sudo /etc/uki-secureboot/uki-build.sh"
-echo "  6. Verify all binaries are signed:"
-echo "       sudo sbctl verify"
-echo "  7. Reboot and enable Secure Boot in UEFI settings"
+echo "What was configured:"
+echo "  - /etc/kernel/cmdline          — kernel command line"
+echo "  - /etc/kernel/uki.conf         — UKI build configuration"
+echo "  - mkinitcpio presets           — UKI generation enabled"
+echo "  - systemd-boot-update.service  — masked"
+echo "  - sbctl                        — UKI paths registered for auto re-signing"
 echo ""
-echo "Note: systemd-boot-update.service is masked by this installer."
-echo "  Bootloader updates are handled by sdboot-systemd-update.hook + zz-sbctl.hook."
+echo "UKIs are now built by mkinitcpio on kernel updates."
+echo "Signing is handled by zz-sbctl.hook automatically."
 echo ""
-warn "IMPORTANT: Keep a USB recovery drive ready before enabling Secure Boot!"
+echo "Verify: sudo sbctl verify"
+echo ""

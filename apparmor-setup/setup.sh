@@ -20,8 +20,7 @@ for arg in "$@"; do
     esac
 done
 
-CMDLINE_FILE="/etc/uki-secureboot/cmdline"
-UKI_BUILD="/etc/uki-secureboot/uki-build.sh"
+CMDLINE_FILE="/etc/kernel/cmdline"
 
 # ─── Step 1: Install packages ────────────────────────────────────────────────
 info "Step 1: Installing packages..."
@@ -55,12 +54,6 @@ if [[ ! -f "$CMDLINE_FILE" ]]; then
     warn "Add these parameters manually before rebooting:"
     warn "  apparmor=1  lsm=landlock,lockdown,yama,integrity,apparmor,bpf"
 else
-    if [[ ! -x "$UKI_BUILD" ]]; then
-        error "$UKI_BUILD not found or not executable."
-        error "Ensure uki-secureboot is installed before running this script."
-        exit 1
-    fi
-
     CMDLINE_CHANGED=0
 
     # apparmor=1
@@ -109,7 +102,7 @@ else
 
     if [[ $CMDLINE_CHANGED -eq 1 ]]; then
         info "Rebuilding UKI with updated cmdline..."
-        "$UKI_BUILD" || { error "UKI rebuild failed. Check output above."; exit 1; }
+        mkinitcpio -P || { error "UKI rebuild failed. Check output above."; exit 1; }
         info "UKI rebuilt successfully."
     else
         info "Kernel parameters already up to date — skipping UKI rebuild."
@@ -135,7 +128,7 @@ if [[ $COMPLAIN_MODE -eq 1 ]]; then
     warn "Step 4: Setting all profiles to COMPLAIN mode (--complain flag active)..."
     find /etc/apparmor.d/ -maxdepth 1 -type f -exec aa-complain {} + 2>/dev/null || true
     warn "Profiles are in complain mode — denials are logged but NOT blocked."
-    warn "After auditing: sudo /etc/apparmor-setup/enforce-all.sh"
+    warn "After auditing: sudo /etc/arch-scripts/apparmor-setup/enforce-all.sh"
 else
     warn "Step 4: Enforcing all profiles..."
     warn "TIP: Pass --complain to this script to audit first before blocking."

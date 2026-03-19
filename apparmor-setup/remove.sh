@@ -12,8 +12,7 @@ error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 [[ $EUID -ne 0 ]] && { error "Must run as root"; exit 1; }
 
-CMDLINE_FILE="/etc/uki-secureboot/cmdline"
-UKI_BUILD="/etc/uki-secureboot/uki-build.sh"
+CMDLINE_FILE="/etc/kernel/cmdline"
 
 # ─── Helper: remove 'apparmor' from lsm= list ────────────────────────────────
 # Handles all positions: only item, start, middle, end.
@@ -60,12 +59,6 @@ info "Step 3: Removing AppArmor kernel parameters..."
 if [[ ! -f "$CMDLINE_FILE" ]]; then
     warn "$CMDLINE_FILE not found — skipping cmdline update."
 else
-    if [[ ! -x "$UKI_BUILD" ]]; then
-        error "$UKI_BUILD not found or not executable."
-        error "Remove the parameters from $CMDLINE_FILE manually and rebuild."
-        exit 1
-    fi
-
     CMDLINE_CHANGED=0
 
     if grep -qw 'apparmor=1' "$CMDLINE_FILE"; then
@@ -92,7 +85,7 @@ else
 
     if [[ $CMDLINE_CHANGED -eq 1 ]]; then
         info "Rebuilding UKI with updated cmdline..."
-        "$UKI_BUILD" || { error "UKI rebuild failed. Check output above."; exit 1; }
+        mkinitcpio -P || { error "UKI rebuild failed. Check output above."; exit 1; }
         info "UKI rebuilt successfully."
     else
         info "No AppArmor kernel parameters found — skipping UKI rebuild."

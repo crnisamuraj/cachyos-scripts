@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# install.sh — Deploy zram-hibernate scripts to /etc/zram-hibernate/
+# install.sh — Deploy zram-hibernate scripts
 # Usage: sudo ./install.sh [--setup]
-#   --setup   Also run setup-hibernate.sh immediately after deploying
+#   --setup   Also run setup.sh immediately after deploying
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_NAME="$(basename "$(cd "${SCRIPT_DIR}/.." && pwd)")"
+MODULE_NAME="$(basename "${SCRIPT_DIR}")"
+INSTALL_DIR="/etc/${REPO_NAME}/${MODULE_NAME}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -38,12 +41,12 @@ fi
 
 # ─── Deploy scripts ───────────────────────────────────────────────────────────
 
-log "Deploying scripts to /etc/zram-hibernate/..."
-mkdir -p /etc/zram-hibernate
+log "Deploying scripts to ${INSTALL_DIR}/..."
+mkdir -p "${INSTALL_DIR}"
 
-cp "${SCRIPT_DIR}/setup-hibernate.sh"  /etc/zram-hibernate/
-cp "${SCRIPT_DIR}/remove-hibernate.sh" /etc/zram-hibernate/
-chmod 700 /etc/zram-hibernate/*.sh
+cp "${SCRIPT_DIR}/setup.sh"  "${INSTALL_DIR}/"
+cp "${SCRIPT_DIR}/remove.sh" "${INSTALL_DIR}/"
+chmod 700 "${INSTALL_DIR}"/*.sh
 
 log "Scripts deployed."
 
@@ -51,7 +54,7 @@ log "Scripts deployed."
 
 if $RUN_SETUP; then
     log "Running setup (--setup flag passed)..."
-    exec /etc/zram-hibernate/setup-hibernate.sh
+    exec "${INSTALL_DIR}/setup.sh"
 fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
@@ -60,8 +63,8 @@ echo ""
 log "Installation complete!"
 echo ""
 echo "Now run:"
-echo "  sudo /etc/zram-hibernate/setup-hibernate.sh"
+echo "  sudo ${INSTALL_DIR}/setup.sh"
 echo ""
 echo "To undo everything later:"
-echo "  sudo /etc/zram-hibernate/remove-hibernate.sh"
+echo "  sudo ${INSTALL_DIR}/remove.sh"
 echo ""
