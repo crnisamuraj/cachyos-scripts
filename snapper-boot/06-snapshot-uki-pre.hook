@@ -12,8 +12,8 @@ Target = *
 [Action]
 Description = Building signed rollback UKI for pre-upgrade snapshot...
 When = PreTransaction
-Depends = /usr/bin/snapper
-Depends = /usr/bin/ukify
-Depends = /usr/bin/sbctl
-Depends = /usr/bin/btrfs
+Depends = snapper
+Depends = systemd-ukify
+Depends = sbctl
+Depends = btrfs-progs
 Exec = /etc/cachyos-scripts/snapper-boot/snapshot-uki.sh

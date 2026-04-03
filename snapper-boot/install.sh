@@ -88,7 +88,7 @@ if [[ ! -f "${INSTALL_DIR}/config" ]]; then
     cat > "${INSTALL_DIR}/config" << 'EOF'
 # snapper-boot configuration
 # Maximum number of snapshot rollback UKI sets to keep on ESP
-MAX_SNAPSHOTS=3
+MAX_SNAPSHOTS=5
 EOF
     log "Default config written to ${INSTALL_DIR}/config"
 else

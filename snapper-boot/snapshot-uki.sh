@@ -176,21 +176,23 @@ mkdir -p "${UKI_DIR}"
 # ─── Determine snapshot number ───────────────────────────────────────────────
 
 if [[ "${MODE}" == "auto" ]]; then
-    # Find the latest pre or single snapshot
-    # snapper list outputs: number | type | pre-number | date | user | cleanup | description | userdata
-    SNAPSHOT_NUM="$(snapper -c root list --columns number,type,description \
-        | tail -n +3 \
-        | awk -F'|' '
-            {
-                gsub(/^[ \t]+|[ \t]+$/, "", $1)
-                gsub(/^[ \t]+|[ \t]+$/, "", $2)
-                if ($2 == "pre" || $2 == "single") num = $1
-            }
-            END { if (num) print num }
-        ')"
+    # Find the latest pre or single snapshot by reading snapper's info.xml files
+    # directly — avoids relying on `snapper list` output format or DBus in hook context.
+    SNAPSHOT_NUM="$(
+        ls -1d /.snapshots/[0-9]*/ 2>/dev/null \
+            | sed 's|/.snapshots/||;s|/||' \
+            | sort -n \
+            | while read -r _num; do
+                _xml="/.snapshots/${_num}/info.xml"
+                if grep -qE '<type>(pre|single)</type>' "${_xml}" 2>/dev/null; then
+                    echo "${_num}"
+                fi
+              done \
+            | tail -1
+    )"
 
     if [[ -z "${SNAPSHOT_NUM}" ]]; then
-        warn "No snapshots found yet (fresh install?). Nothing to do."
+        warn "No pre or single snapshots found. Nothing to do."
         exit 0
     fi
     log "Auto-detected latest snapshot: #${SNAPSHOT_NUM}"
